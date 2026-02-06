@@ -1,95 +1,66 @@
-import sqlite3
+# ==============================
+# Database Manager (Phase 1)
+# ==============================
 
-conn = sqlite3.connect("bot.db", check_same_thread=False)
-cursor = conn.cursor()
+import sqlite3
+from threading import Lock
+
+DB_NAME = "database.db"
+_db_lock = Lock()
+
+
+def get_connection():
+    """
+    ایجاد اتصال امن به دیتابیس
+    """
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 
 def init_db():
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        username TEXT,
-        join_date TEXT
-    )
-    """)
+    """
+    ساخت جدول‌های اصلی پروژه
+    فقط یک بار در شروع ربات اجرا می‌شود
+    """
+    with _db_lock:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS services (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        duration TEXT,
-        price INTEGER
-    )
-    """)
+        # ------------------------------
+        # جدول کاربران
+        # ------------------------------
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE,
+            joined_at TEXT
+        )
+        """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS receipts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        photo_id TEXT,
-        status TEXT,
-        date TEXT
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS support (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        message TEXT,
-        date TEXT
-    )
-    """)
-
-    conn.commit()
-
-
-# ---------- Services ----------
-def add_service(name, duration, price):
-    cursor.execute(
-        "INSERT INTO services (name, duration, price) VALUES (?,?,?)",
-        (name, duration, price)
-    )
-    conn.commit()
-
-def get_services():
-    cursor.execute("SELECT * FROM services")
-    return cursor.fetchall()
+        # ------------------------------
+        # جدول state کاربران
+        # ------------------------------
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_states (
+            user_id INTEGER PRIMARY KEY,
+            state TEXT
+        )
+        """)
+        
+        # ------------------------------
+        # جدول سرویس‌ها
+        # ------------------------------
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS services (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            volume TEXT,
+            duration TEXT,
+            price INTEGER
+        )
+        """)
 
 
-# ---------- Receipts ----------
-def add_receipt(user_id, photo_id):
-    cursor.execute(
-        "INSERT INTO receipts (user_id, photo_id, status, date) VALUES (?,?,?,datetime('now'))",
-        (user_id, photo_id, "pending")
-    )
-    conn.commit()
-
-def get_pending_receipts():
-    cursor.execute(
-        "SELECT id, user_id, photo_id, status, date FROM receipts ORDER BY id DESC"
-    )
-    return cursor.fetchall()
-
-
-def update_receipt_status(rid, status):
-    cursor.execute(
-        "UPDATE receipts SET status=? WHERE id=?",
-        (status, rid)
-    )
-    conn.commit()
-
-
-# ---------- Support ----------
-def add_support(user_id, message):
-    cursor.execute(
-        "INSERT INTO support (user_id, message, date) VALUES (?,?,datetime('now'))",
-        (user_id, message)
-    )
-    conn.commit()
-
-def get_supports():
-    cursor.execute(
-        "SELECT id, user_id, message, date FROM support ORDER BY id DESC"
-    )
-    return cursor.fetchall()
-
+        conn.commit()
+        conn.close()
