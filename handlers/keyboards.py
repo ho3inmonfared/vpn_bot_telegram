@@ -44,8 +44,11 @@ def admin_main_menu():
 # ------------------------------
 # اصلاح دوکمه بازگشت
 # ------------------------------
+# ------------------------------
+# مدیریت سرویس‌ها
+# ------------------------------
+
 def admin_services_menu():
-    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
     markup = InlineKeyboardMarkup()
     markup.add(
         InlineKeyboardButton("➕ افزودن سرویس", callback_data="service_add"),
@@ -53,14 +56,14 @@ def admin_services_menu():
         InlineKeyboardButton("🗑 حذف سرویس", callback_data="service_delete")
     )
     markup.add(
-        InlineKeyboardButton("⬅️ بازگشت", callback_data="admin_menu")  # callback_data دقیق
+        InlineKeyboardButton("⬅️ بازگشت", callback_data="admin_menu")
     )
     return markup
 
 
 def services_list_keyboard(services, prefix):
-    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
     markup = InlineKeyboardMarkup()
+
     for s in services:
         markup.add(
             InlineKeyboardButton(
@@ -68,9 +71,57 @@ def services_list_keyboard(services, prefix):
                 callback_data=f"{prefix}_{s['id']}"
             )
         )
+
+    # بازگشت هوشمند
+    if prefix == "buy":
+        back_callback = "user_menu"
+    else:
+        back_callback = "admin_services"
+
     markup.add(
-        InlineKeyboardButton("⬅️ بازگشت", callback_data="admin_services")  # callback_data درست
+        InlineKeyboardButton("⬅️ بازگشت", callback_data=back_callback)
+    )
+
+    return markup
+
+
+# ==============================
+# Receipts / Payments Keyboards
+# ==============================
+
+def send_receipt_back_to_menu():
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = InlineKeyboardMarkup()
+    markup.add(
+        InlineKeyboardButton("⬅️ بازگشت", callback_data="user_menu")
     )
     return markup
+
+
+def receipt_admin_filter_menu():
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = InlineKeyboardMarkup()
+    markup.add(
+        InlineKeyboardButton("📥 بررسی‌نشده", callback_data="receipts_pending"),
+        InlineKeyboardButton("✅ پاسخ‌داده‌شده", callback_data="receipts_answered")
+    )
+    markup.add(
+        InlineKeyboardButton("⬅️ بازگشت", callback_data="admin_menu")
+    )
+    return markup
+
+
+def receipt_admin_action(receipt_id):
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = InlineKeyboardMarkup()
+    markup.add(
+        InlineKeyboardButton("✅ تأیید", callback_data=f"receipt_approve_{receipt_id}"),
+        InlineKeyboardButton("❌ رد", callback_data=f"receipt_reject_{receipt_id}")
+    )
+    markup.add(
+        InlineKeyboardButton("⬅️ بازگشت", callback_data="receipts_pending")
+    )
+    return markup
+
 
 

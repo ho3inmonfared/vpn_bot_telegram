@@ -38,15 +38,14 @@ def init_db():
         )
         """)
 
-        # ------------------------------
-        # جدول state کاربران
-        # ------------------------------
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_states (
             user_id INTEGER PRIMARY KEY,
-            state TEXT
+            state TEXT,
+            data TEXT
         )
         """)
+
         
         # ------------------------------
         # جدول سرویس‌ها
@@ -60,7 +59,20 @@ def init_db():
             price INTEGER
         )
         """)
-
-
+        
+        # ------------------------------
+        # جدول رسیدهای پرداخت
+        # ------------------------------
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS receipts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            service_id INTEGER,
+            photo_id TEXT,
+            status TEXT DEFAULT 'pending', -- pending / approved / rejected
+            created_at TEXT
+        )
+        """)
+        
         conn.commit()
         conn.close()
