@@ -11,6 +11,8 @@ from database import get_connection
 from handlers.keyboards import user_main_menu, back_button
 from handlers.keyboards import send_receipt_back_to_menu
 from handlers.keyboards import receipt_admin_action
+from config import ADMIN_ID
+
 
 
 # ------------------------------
@@ -38,6 +40,87 @@ def get_state(user_id):
     conn.close()
     return row["state"] if row else None
 
+@bot.message_handler(commands=["start"])
+def start_user(message):
+    user_id = message.from_user.id
+    if user_id == ADMIN_ID:
+        bot.send_message(
+            ADMIN_ID,
+            "👑 شما ادمین هستید.\n\nبرای ورود به پنل مدیریت از دستور زیر استفاده کنید:\n/admin"
+        )
+        return
+    username = message.from_user.username
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # آیا کاربر قبلاً ثبت شده؟
+    cursor.execute(
+        "SELECT id FROM users WHERE user_id=?",
+        (user_id,)
+    )
+    exists = cursor.fetchone()
+
+    if not exists:
+        # ثبت کاربر جدید
+        cursor.execute("""
+            INSERT INTO users (user_id, username, joined_at)
+            VALUES (?, ?, ?)
+        """, (user_id, username, now))
+        conn.commit()
+
+        # 🔔 اعلان لحظه‌ای به ادمین
+        bot.send_message(
+            ADMIN_ID,
+            "🟢 <b>کاربر جدید وارد ربات شد</b>\n\n"
+            f"🆔 <code>{user_id}</code>\n"
+            f"👤 @{username}\n"
+            f"🕒 {now}"
+        )
+
+    conn.close()
+
+    # ارسال منوی اصلی
+    bot.send_message(
+        user_id,
+        "🌐 <b>سرویس VPN پرسرعت</b>\n\n"
+        "✅ کیفیت بالا\n"
+        "💰 قیمت اقتصادی\n"
+        f"🔥 تعداد فروش: {FAKE_SALES_COUNT}\n\n"
+        "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
+
+        reply_markup=user_main_menu()
+    )
+
+    set_state(user_id, "MENU")
+
+@bot.message_handler(commands=["buy"])
+def buy_command(message):
+    if message.from_user.id == ADMIN_ID:
+        bot.reply_to(message, "⛔ این دستور فقط برای کاربران است")
+        return
+
+    from handlers.keyboards import services_list_keyboard
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM services")
+    services = cursor.fetchall()
+    conn.close()
+
+    if not services:
+        bot.send_message(message.chat.id, "❌ در حال حاضر سرویسی موجود نیست")
+        return
+
+    bot.send_message(
+        message.chat.id,
+        "🛒 <b>انتخاب سرویس</b>\n\nلطفاً یکی از سرویس‌ها را انتخاب کنید:",
+        reply_markup=services_list_keyboard(services, "buy")
+    )
+
+    set_state(message.from_user.id, "MENU")
+
 
 # ------------------------------
 # Start menu (user)
@@ -60,7 +143,6 @@ def user_menu(call: CallbackQuery):
     )
     set_state(call.from_user.id, "MENU")
 
-from config import ADMIN_ID
 
 @bot.callback_query_handler(func=lambda c: c.data == "user_menu_back")
 def user_menu_back(call):
@@ -169,7 +251,6 @@ def receive_support_message(message):
 
 
     # ارسال برای ادمین
-    from config import ADMIN_ID
     from handlers.keyboards import support_admin_action
 
     bot.send_message(
@@ -180,6 +261,22 @@ def receive_support_message(message):
         f"💬 پیام:\n{text}",
         reply_markup=support_admin_action(ticket_id)
     )
+
+@bot.message_handler(commands=["support"])
+def support_command(message):
+    if message.from_user.id == ADMIN_ID:
+        bot.reply_to(message, "⛔ این دستور فقط برای کاربران است")
+        return
+
+    bot.send_message(
+        message.chat.id,
+        "🆘 <b>پشتیبانی</b>\n\n"
+        "لطفاً پیام خود را بنویسید.\n"
+        "📌 فقط پیام متنی قابل ارسال است."
+    )
+
+    set_state(message.from_user.id, "WAIT_SUPPORT_MESSAGE")
+
 
 # ------------------------------
 # مرحله ارسال رسید (callback خرید سرویس)

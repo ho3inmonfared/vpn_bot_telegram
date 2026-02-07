@@ -38,6 +38,16 @@ def init_db():
         )
         """)
 
+        # --- migration: username ---
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [c[1] for c in cursor.fetchall()]
+
+        if "username" not in columns:
+            cursor.execute(
+                "ALTER TABLE users ADD COLUMN username TEXT"
+            )
+
+
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_states (
             user_id INTEGER PRIMARY KEY,
