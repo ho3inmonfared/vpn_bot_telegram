@@ -113,14 +113,74 @@ def receipt_admin_filter_menu():
 
 def receipt_admin_action(receipt_id):
     from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    markup = InlineKeyboardMarkup(row_width=2)
+
+    markup.add(
+        InlineKeyboardButton(
+            "✉️ پاسخ به کاربر",
+            callback_data=f"receipt_reply_{receipt_id}"
+        ),
+        InlineKeyboardButton(
+            "❌ رد رسید",
+            callback_data=f"receipt_reject_{receipt_id}"
+        )
+    )
+
+    markup.add(
+        InlineKeyboardButton(
+            "⬅️ بازگشت",
+            callback_data="receipts_pending"
+        )
+    )
+
+    return markup
+
+# ==============================
+# Support / Tickets Keyboards
+# ==============================
+
+def support_user_start_keyboard():
     markup = InlineKeyboardMarkup()
     markup.add(
-        InlineKeyboardButton("✅ تأیید", callback_data=f"receipt_approve_{receipt_id}"),
-        InlineKeyboardButton("❌ رد", callback_data=f"receipt_reject_{receipt_id}")
+        InlineKeyboardButton("⬅️ بازگشت", callback_data="user_menu")
+    )
+    return markup
+
+
+def support_admin_filter_menu():
+    markup = InlineKeyboardMarkup()
+    markup.add(
+        InlineKeyboardButton("📥 بررسی‌نشده", callback_data="support_pending"),
+        InlineKeyboardButton("✅ پاسخ‌داده‌شده", callback_data="support_answered")
     )
     markup.add(
-        InlineKeyboardButton("⬅️ بازگشت", callback_data="receipts_pending")
+        InlineKeyboardButton("⬅️ بازگشت", callback_data="admin_menu")
     )
+    return markup
+
+
+def support_admin_action(ticket_id):
+    markup = InlineKeyboardMarkup(row_width=2)
+
+    markup.add(
+        InlineKeyboardButton(
+            "✉️ پاسخ به کاربر",
+            callback_data=f"support_reply_{ticket_id}"
+        ),
+        InlineKeyboardButton(
+            "❌ رد درخواست",
+            callback_data=f"support_reject_{ticket_id}"
+        )
+    )
+
+    markup.add(
+        InlineKeyboardButton(
+            "⬅️ بازگشت",
+            callback_data="support_pending"
+        )
+    )
+
     return markup
 
 

@@ -10,6 +10,7 @@ from config import FAKE_SALES_COUNT
 from database import get_connection
 from handlers.keyboards import user_main_menu, back_button
 from handlers.keyboards import send_receipt_back_to_menu
+from handlers.keyboards import receipt_admin_action
 
 
 # ------------------------------
@@ -99,32 +100,85 @@ def user_buy(call):
 
 
 # ------------------------------
-# Support (locked for next phase)
+# Support (User)
 # ------------------------------
 @bot.callback_query_handler(func=lambda call: call.data == "user_support")
-def support(call: CallbackQuery):
-    bot.answer_callback_query(call.id, "🆘 پشتیبانی در فاز بعدی فعال می‌شود")
-    
-
-@bot.callback_query_handler(func=lambda c: c.data == "user_buy")
-def user_buy(call):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM services")
-    services = cursor.fetchall()
-    conn.close()
-
-    if not services:
-        bot.answer_callback_query(call.id, "❌ در حال حاضر سرویسی موجود نیست")
-        return
-
-    from handlers.keyboards import services_list_keyboard
-
+def user_support_start(call: CallbackQuery):
     bot.edit_message_text(
-        "🛒 <b>انتخاب سرویس</b>",
+        "🆘 <b>پشتیبانی</b>\n\n"
+        "لطفاً پیام خود را بنویسید.\n"
+        "📌 فقط پیام متنی قابل ارسال است.",
         call.message.chat.id,
         call.message.message_id,
-        reply_markup=services_list_keyboard(services, "buy")
+        reply_markup=back_button("user_menu")
+    )
+
+    set_state(call.from_user.id, "WAIT_SUPPORT_MESSAGE")
+
+@bot.message_handler(
+    func=lambda m: get_state(m.from_user.id) == "WAIT_SUPPORT_MESSAGE",
+    content_types=["text"]
+)
+def receive_support_message(message):
+    if message.text.startswith("/"):
+        return
+
+    user_id = message.from_user.id
+    text = message.text.strip()
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # ✅ اول چک کن تیکت باز دارد یا نه
+    cursor.execute("""
+        SELECT id FROM support_tickets
+        WHERE user_id=? AND status='pending'
+    """, (user_id,))
+    if cursor.fetchone():
+        conn.close()
+        bot.send_message(
+            user_id,
+            "⛔ شما یک درخواست پشتیبانی در حال بررسی دارید.\n\n"
+            "🙏 لطفاً تا پاسخ تیم پشتیبانی صبر کنید."
+        )
+        return
+
+    # ✅ اگر نداشت، ثبت کن
+    cursor.execute("""
+        INSERT INTO support_tickets (user_id, message, status, created_at)
+        VALUES (?, ?, 'pending', ?)
+    """, (user_id, text, created_at))
+
+    ticket_id = cursor.lastrowid
+
+    cursor.execute(
+        "DELETE FROM user_states WHERE user_id=?",
+        (user_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    # پیام به کاربر
+    bot.send_message(
+        user_id,
+        "✅ پیام شما با موفقیت ارسال شد.\n\n"
+        "⏳ تیم پشتیبانی در سریع‌ترین زمان ممکن بررسی کرده و پاسخ خواهد داد."
+    )
+
+
+    # ارسال برای ادمین
+    from config import ADMIN_ID
+    from handlers.keyboards import support_admin_action
+
+    bot.send_message(
+        ADMIN_ID,
+        f"🆘 <b>درخواست پشتیبانی جدید</b>\n\n"
+        f"👤 کاربر: <code>{user_id}</code>\n"
+        f"🕒 {created_at}\n\n"
+        f"💬 پیام:\n{text}",
+        reply_markup=support_admin_action(ticket_id)
     )
 
 # ------------------------------
@@ -192,16 +246,23 @@ def receive_photo(message):
 
     # ذخیره رسید
     cursor.execute(
-        "INSERT INTO receipts (user_id, service_id, photo_id, created_at) VALUES (?, ?, ?, ?)",
+    "INSERT INTO receipts (user_id, service_id, photo_id, created_at) VALUES (?, ?, ?, ?)",
         (user_id, service_id, file_id, created_at)
     )
-    # پاک کردن state
+
+    receipt_id = cursor.lastrowid  # ✅ خیلی مهم
+
     cursor.execute("DELETE FROM user_states WHERE user_id=?", (user_id,))
     conn.commit()
     conn.close()
 
-    bot.reply_to(message, "✅ رسید شما دریافت شد و در حال بررسی است")
-    
-    # اطلاع ادمین
-    from config import ADMIN_ID
-    bot.send_message(ADMIN_ID, f"📥 رسید جدید از کاربر {user_id} دریافت شد")
+    bot.send_photo(
+        ADMIN_ID,
+        file_id,
+        caption=f"📥 رسید جدید\n"
+                f"👤 کاربر: {user_id}\n"
+                f"🕒 {created_at}",
+        reply_markup=receipt_admin_action(receipt_id)
+    )
+
+

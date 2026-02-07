@@ -12,6 +12,11 @@ from handlers.keyboards import admin_main_menu
 
 from handlers.keyboards import admin_services_menu, services_list_keyboard
 from handlers.keyboards import receipt_admin_filter_menu, receipt_admin_action
+from handlers.keyboards import (
+    support_admin_filter_menu,
+    support_admin_action
+)
+
 
 
 # ------------------------------
@@ -259,16 +264,6 @@ def admin_back_to_main(call):
         reply_markup=admin_main_menu()
     )
 
-
-@bot.callback_query_handler(func=lambda c: c.data == "admin_services")
-def admin_back_to_services(call):
-    bot.send_message(
-        call.message.chat.id,
-        "🛒 <b>مدیریت سرویس‌ها</b>\n\nیکی از گزینه‌ها را انتخاب کنید:",
-        reply_markup=admin_services_menu()
-    )
-
-
 # ------------------------------
 # فیلتر رسیدها
 # ------------------------------
@@ -306,9 +301,12 @@ def receipt_approve(call):
     conn.commit()
     conn.close()
 
-    bot.edit_message_caption(call.message.chat.id, call.message.message_id,
+    bot.edit_message_caption(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
         caption=call.message.caption + "\n✅ تایید شد"
     )
+
     bot.send_message(r["user_id"], "🎉 رسید شما تأیید شد، سرویس شما آماده است")
     
 
@@ -327,7 +325,273 @@ def receipt_reject(call):
     conn.commit()
     conn.close()
 
-    bot.edit_message_caption(call.message.chat.id, call.message.message_id,
+    bot.edit_message_caption(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
         caption=call.message.caption + "\n❌ رد شد"
     )
+
     bot.send_message(r["user_id"], "⚠️ رسید شما رد شد، لطفاً بررسی و دوباره ارسال کنید")
+    
+    
+def process_receipt_reply(message, receipt_id):
+    response_text = message.text
+    responded_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT user_id FROM receipts WHERE id=?",
+        (receipt_id,)
+    )
+    r = cursor.fetchone()
+
+    if not r:
+        conn.close()
+        bot.send_message(message.chat.id, "❌ رسید یافت نشد")
+        return
+
+    cursor.execute("""
+        UPDATE receipts
+        SET status='answered',
+            admin_response=?,
+            responded_at=?
+        WHERE id=?
+    """, (response_text, responded_at, receipt_id))
+
+    conn.commit()
+    conn.close()
+
+    # ارسال پاسخ به کاربر
+    bot.send_message(
+        r["user_id"],
+        f"💬 پاسخ پشتیبانی:\n\n{response_text}"
+    )
+
+    bot.send_message(message.chat.id, "✅ پاسخ برای کاربر ارسال شد")
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("receipt_reply_"))
+def receipt_reply(call):
+    receipt_id = int(call.data.split("_")[-1])
+    msg = bot.send_message(
+        call.message.chat.id,
+        "✍️ متن پاسخ به کاربر را وارد کنید:"
+    )
+    bot.register_next_step_handler(msg, process_receipt_reply, receipt_id)
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_receipts")
+def admin_receipts(call):
+    bot.send_message(
+        call.message.chat.id,
+        "🧾 <b>رسیدهای پرداخت</b>\n\nانتخاب کنید:",
+        reply_markup=receipt_admin_filter_menu()
+    )
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "receipts_answered")
+def receipts_answered(call):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT * FROM receipts
+        WHERE status IN ('answered', 'rejected', 'approved')
+        ORDER BY responded_at DESC
+    """)
+    receipts = cursor.fetchall()
+    conn.close()
+
+    if not receipts:
+        bot.send_message(
+            call.message.chat.id,
+            "📭 هیچ رسید پاسخ‌داده‌شده‌ای وجود ندارد",
+            reply_markup=receipt_admin_filter_menu()
+        )
+        return
+
+    for r in receipts:
+        caption = (
+            f"👤 کاربر: {r['user_id']}\n"
+            f"🕒 ارسال: {r['created_at']}\n"
+        )
+
+        if r["responded_at"]:
+            caption += f"⏱ پاسخ: {r['responded_at']}\n"
+
+        if r["admin_response"]:
+            caption += f"\n💬 پاسخ ادمین:\n{r['admin_response']}"
+
+        if r["status"] == "rejected":
+            caption += "\n\n❌ وضعیت: رد شده"
+        elif r["status"] == "approved":
+            caption += "\n\n✅ وضعیت: تأیید شده"
+        else:
+            caption += "\n\n✉️ وضعیت: پاسخ داده شده"
+
+        bot.send_photo(
+            call.message.chat.id,
+            r["photo_id"],
+            caption=caption
+        )
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_support")
+def admin_support_menu(call):
+    bot.send_message(
+        call.message.chat.id,
+        "🆘 <b>مدیریت پشتیبانی</b>\n\nانتخاب کنید:",
+        reply_markup=support_admin_filter_menu()
+    )
+
+@bot.callback_query_handler(func=lambda c: c.data == "support_pending")
+def support_pending(call):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT * FROM support_tickets
+        WHERE status='pending'
+        ORDER BY created_at ASC
+    """)
+    tickets = cursor.fetchall()
+    conn.close()
+
+    if not tickets:
+        bot.send_message(call.message.chat.id, "📭 تیکت بررسی‌نشده‌ای وجود ندارد")
+        return
+
+    for t in tickets:
+        bot.send_message(
+            call.message.chat.id,
+            f"🆘 <b>درخواست پشتیبانی</b>\n\n"
+            f"👤 کاربر: <code>{t['user_id']}</code>\n"
+            f"🕒 {t['created_at']}\n\n"
+            f"💬 پیام:\n{t['message']}",
+            reply_markup=support_admin_action(t["id"])
+        )
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("support_reply_"))
+def support_reply(call):
+    ticket_id = int(call.data.split("_")[-1])
+    msg = bot.send_message(call.message.chat.id, "✍️ پاسخ خود را بنویسید:")
+    bot.register_next_step_handler(msg, process_support_reply, ticket_id)
+
+def process_support_reply(message, ticket_id):
+    response = message.text
+    responded_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT user_id FROM support_tickets WHERE id=?",
+        (ticket_id,)
+    )
+    t = cursor.fetchone()
+
+    if not t:
+        conn.close()
+        return
+
+    cursor.execute("""
+        UPDATE support_tickets
+        SET status='answered',
+            admin_response=?,
+            responded_at=?
+        WHERE id=?
+    """, (response, responded_at, ticket_id))
+
+    # ✅ پاک کردن state کاربر
+    cursor.execute(
+        "DELETE FROM user_states WHERE user_id=?",
+        (t["user_id"],)
+    )
+
+    conn.commit()
+    conn.close()
+
+    bot.send_message(
+        t["user_id"],
+        f"💬 <b>پاسخ پشتیبانی</b>\n\n{response}"
+    )
+
+    bot.send_message(message.chat.id, "✅ پاسخ ارسال شد")
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("support_reject_"))
+def support_reject(call):
+    ticket_id = int(call.data.split("_")[-1])
+    responded_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT user_id FROM support_tickets WHERE id=?",
+        (ticket_id,)
+    )
+    t = cursor.fetchone()
+
+    if not t:
+        conn.close()
+        return
+
+    cursor.execute("""
+        UPDATE support_tickets
+        SET status='rejected',
+            responded_at=?
+        WHERE id=?
+    """, (responded_at, ticket_id))
+
+    # ✅ پاک کردن state کاربر
+    cursor.execute(
+        "DELETE FROM user_states WHERE user_id=?",
+        (t["user_id"],)
+    )
+
+    conn.commit()
+    conn.close()
+
+    bot.send_message(
+        t["user_id"],
+        "❌ درخواست پشتیبانی شما رد شد.\nدر صورت نیاز، مجدد پیام ارسال کنید."
+    )
+
+    bot.answer_callback_query(call.id, "رد شد")
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "support_answered")
+def support_answered(call):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT * FROM support_tickets
+        WHERE status IN ('answered', 'rejected')
+        ORDER BY responded_at DESC
+    """)
+    tickets = cursor.fetchall()
+    conn.close()
+
+    if not tickets:
+        bot.send_message(call.message.chat.id, "📭 تیکت پاسخ‌داده‌شده‌ای وجود ندارد")
+        return
+
+    for t in tickets:
+        text = (
+            f"👤 کاربر: <code>{t['user_id']}</code>\n"
+            f"🕒 ارسال: {t['created_at']}\n"
+        )
+
+        if t["responded_at"]:
+            text += f"⏱ پاسخ: {t['responded_at']}\n"
+
+        if t["admin_response"]:
+            text += f"\n💬 پاسخ:\n{t['admin_response']}"
+
+        if t["status"] == "rejected":
+            text += "\n\n❌ وضعیت: رد شده"
+        else:
+            text += "\n\n✅ وضعیت: پاسخ داده شده"
+
+        bot.send_message(call.message.chat.id, text)

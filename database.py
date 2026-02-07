@@ -74,5 +74,34 @@ def init_db():
         )
         """)
         
+            # --- migration: admin_response ---
+        cursor.execute("PRAGMA table_info(receipts)")
+        columns = [c[1] for c in cursor.fetchall()]
+
+        if "admin_response" not in columns:
+            cursor.execute(
+                "ALTER TABLE receipts ADD COLUMN admin_response TEXT"
+            )
+
+        if "responded_at" not in columns:
+            cursor.execute(
+                "ALTER TABLE receipts ADD COLUMN responded_at TEXT"
+            )
+
+        # ------------------------------
+        # جدول پشتیبانی (Support Tickets)
+        # ------------------------------
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS support_tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            message TEXT,
+            status TEXT DEFAULT 'pending', -- pending / answered / rejected
+            admin_response TEXT,
+            created_at TEXT,
+            responded_at TEXT
+        )
+        """)
+        
         conn.commit()
         conn.close()
